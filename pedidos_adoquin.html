@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Pedidos – Adoquín / Prefabricados</title>
+
+  <!-- jsPDF (PDF por orden) -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <!-- SheetJS (Excel .xlsx) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js"></script>
+
+  <style>
+    :root{ --pad:14px; --b:#e5e7eb; --txt:#111827; --mut:#6b7280; --bg:#fafafa; }
+    *{ box-sizing:border-box; }
+    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:var(--txt); background:var(--bg); }
+    header{ position:sticky; top:0; background:#fff; border-bottom:1px solid var(--b); padding:var(--pad); z-index:10; }
+    h1{ margin:0 0 6px; font-size:18px; }
+    .small{ font-size:12px; color:var(--mut); }
+    main{ padding:var(--pad); max-width:1100px; margin:0 auto; }
+    .grid{ display:grid; grid-template-columns:1fr; gap:12px; }
+    @media (min-width: 950px){ .grid{ grid-template-columns: 1fr 1fr; } }
+    .card{ background:#fff; border:1px solid var(--b); border-radius:14px; padding:var(--pad); }
+    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .two{ display:grid; grid-template-columns: 1fr; gap:10px; }
+    @media (min-width: 700px){ .two{ grid-template-columns: 1fr 1fr; } }
+    label{ display:block; font-size:12px; color:var(--mut); margin:0 0 6px; }
+    input, select, textarea{
+      width:100%; padding:10px; border:1px solid var(--b); border-radius:10px; font-size:14px; background:#fff;
+    }
+    textarea{ min-height:70px; resize:vertical; }
+    .btn{ border:1px solid var(--b); background:#fff; padding:10px 12px; border-radius:10px; cursor:pointer; }
+    .btn:hover{ background:#f3f4f6; }
+    .btn.primary{ background:#111827; color:#fff; border-color:#111827; }
+    .btn.primary:hover{ background:#0b1220; }
+    .btn.danger{ border-color:#fecaca; color:#991b1b; }
+    .btn.danger:hover{ background:#fff1f2; }
+    .pill{ font-size:12px; color:var(--mut); border:1px solid var(--b); background:#fff; padding:6px 10px; border-radius:999px; }
+    .sep{ height:1px; background:var(--b); margin:12px 0; }
+    .table{ width:100%; border-collapse:separate; border-spacing:0; }
+    .table th, .table td{ text-align:left; padding:10px; border-bottom:1px solid var(--b); font-size:13px; vertical-align:top; }
+    .table th{ font-size:12px; color:var(--mut); font-weight:600; }
+    .orderCard{ border:1px solid var(--b); border-radius:14px; padding:12px; margin:10px 0; background:#fff; }
+    .orderTitle{ display:flex; gap:10px; justify-content:space-between; align-items:flex-start; }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .mut{ color:var(--mut); }
+    .lineItem{ border:1px solid var(--b); border-radius:12px; padding:10px; margin:10px 0; background:#fafafa; }
+    .right{ margin-left:auto; }
+  </style>
+</head>
+
+<body>
+<header>
+  <div class="row">
+    <div>
+      <h1>Pedidos – Adoquín / Prefabricados</h1>
+      <div class="small">Captura pedidos, guarda localmente, exporta PDF por orden y Excel (base completa).</div>
+    </div>
+    <div class="right row">
+      <span id="countPill" class="pill">0 pedidos</span>
+      <button class="btn" id="btnExportExcel">Exportar Excel (.xlsx)</button>
+      <button class="btn" id="btnExportJson">Exportar JSON</button>
+      <button class="btn" id="btnImportJson">Importar JSON</button>
+      <button class="btn danger" id="btnWipe">Borrar todo</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="grid">
+    <!-- FORM -->
+    <div class="card">
+      <h2 style="margin:0 0 10px;font-size:15px;">Nueva orden</h2>
+
+      <div class="two">
+        <div>
+          <label>Fecha (creación de la orden)</label>
+          <input id="orderDate" type="date" />
+          <div class="small">Se guarda esta fecha como “Fecha” de la orden (editable).</div>
+        </div>
+        <div>
+          <label>ID (se genera al guardar)</label>
+          <input id="orderIdPreview" class="mono" disabled value="(se genera al guardar)" />
+        </div>
+
+        <div>
+          <label>1) Nombre Completo</label>
+          <input id="fullName" placeholder="Ej. Gerardo Moreno" />
+        </div>
+        <div>
+          <label>2) Número de Teléfono</label>
+          <input id="phone" placeholder="Ej. 614 123 4567" inputmode="tel" />
+        </div>
+
+        <div style="grid-column:1/-1;">
+          <label>3) Dirección</label>
+          <textarea id="address" placeholder="Calle, número, colonia, ciudad, referencias..."></textarea>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="row" style="justify-content:space-between;">
+        <div>
+          <h3 style="margin:0;font-size:14px;">4) Material(es) y color + 5) Cantidad en Metros (m²)</h3>
+          <div class="small">Puedes agregar hasta 5 renglones si una orden lleva diferentes materiales/colores.</div>
+        </div>
+        <button class="btn" id="btnAddItem" type="button">+ Agregar material (máx 5)</button>
+      </div>
+
+      <div id="itemsWrap"></div>
+
+      <div class="sep"></div>
+
+      <div class="two">
+        <div>
+          <label>6) ¿Está Pagado?</label>
+          <select id="paidStatus">
+            <option value="si">Sí</option>
+            <option value="no">No</option>
+            <option value="anticipo">Anticipo</option>
+          </select>
+        </div>
+        <div>
+          <label>7) Fecha de pago</label>
+          <input id="paymentDate" type="date" />
+        </div>
+        <div>
+          <label>8) Fecha promesa de entrega</label>
+          <input id="deliveryDate" type="date" />
+        </div>
+        <div>
+          <label>Notas (opcional)</label>
+          <input id="notes" placeholder="Ej. Entregar por la tarde / requiere factura / etc." />
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="row">
+        <button class="btn primary" id="btnSave" type="button">Guardar orden</button>
+        <button class="btn" id="btnClear" type="button">Limpiar formulario</button>
+      </div>
+
+      <div class="small" style="margin-top:10px;">
+        Consejo: exporta Excel cada semana como respaldo. Para mover tus datos a otro dispositivo, usa Exportar/Importar JSON.
+      </div>
+    </div>
+
+    <!-- LIST -->
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <h2 style="margin:0;font-size:15px;">Pedidos guardados</h2>
+        <input id="search" placeholder="Buscar por nombre, teléfono o ID..." style="max-width:320px;" />
+      </div>
+      <div id="ordersWrap" style="margin-top:10px;"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const STORAGE_KEY = "pedidos_adoquin_v2";
+  const MAX_ITEMS = 5;
+
+  // -------------------- State --------------------
+  let state = loadState();
+
+  // -------------------- Helpers --------------------
+  function loadState(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return { orders: [] };
+      const data = JSON.parse(raw);
+      if(!data.orders || !Array.isArray(data.orders)) return { orders: [] };
+      return data;
+    } catch {
+      return { orders: [] };
+    }
+  }
+  function saveState(){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    renderOrders();
+    renderCount();
+  }
+  function pad(n){ return String(n).padStart(2,"0"); }
+  function todayISO(){
+    const d = new Date();
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+  function uid(orderDateISO){
+    // ID legible con fecha
+    const d = new Date();
+    const time = `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+    const date = (orderDateISO || todayISO()).replaceAll("-","");
+    return `ORD-${date}-${time}`;
+  }
+  function fmtDate(iso){
+    if(!iso) return "—";
+    const [y,m,d] = iso.split("-");
+    return `${d}/${m}/${y}`;
+  }
+  function paidLabel(v){
+    if(v === "si") return "Sí";
+    if(v === "no") return "No";
+    return "Anticipo";
+  }
+  function sumMeters(items){
+    let total = 0;
+    for(const it of items){
+      const v = Number(String(it.meters || "").replace(",", "."));
+      if(!isNaN(v)) total += v;
+    }
+    return Math.round(total * 100) / 100;
+  }
+  function escapeHtml(s){
+    return String(s ?? "")
+      .replaceAll("&","&amp;").replaceAll("<","&lt;")
+      .replaceAll(">","&gt;").replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
+
+  // -------------------- Line Items UI --------------------
+  function defaultItem(){ return { materialColor:"", meters:"" }; }
+
+  function addItemRow(prefill){
+    const wrap = document.getElementById("itemsWrap");
+    const count = wrap.querySelectorAll(".lineItem").length;
+    if(count >= MAX_ITEMS) return;
+
+    const data = prefill || defaultItem();
+    const box = document.createElement("div");
+    box.className = "lineItem";
+
+    box.innerHTML = `
+      <div class="two">
+        <div>
+          <label>4) Tipo de material y color</label>
+          <input class="mat" placeholder="Ej. Adoquín 10×20 / Gris natural" />
+        </div>
+        <div>
+          <label>5) Cantidad en metros (m²)</label>
+          <input class="mts" placeholder="Ej. 35" inputmode="decimal" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <span class="small mut">Renglón ${count+1} de ${MAX_ITEMS}</span>
+        <button class="btn danger right btnDelItem" type="button">Eliminar renglón</button>
+      </div>
+    `;
+
+    box.querySelector(".mat").value = data.materialColor || "";
+    box.querySelector(".mts").value = data.meters ?? "";
+
+    box.querySelector(".btnDelItem").addEventListener("click", () => {
+      box.remove();
+      renumberItems();
+      ensureAtLeastOneItem();
+    });
+
+    wrap.appendChild(box);
+    renumberItems();
+  }
+
+  function ensureAtLeastOneItem(){
+    const wrap = document.getElementById("itemsWrap");
+    if(wrap.querySelectorAll(".lineItem").length === 0) addItemRow();
+  }
+
+  function renumberItems(){
+    const wrap = document.getElementById("itemsWrap");
+    [...wrap.querySelectorAll(".lineItem")].forEach((el, idx) => {
+      const tag = el.querySelector(".small.mut");
+      if(tag) tag.textContent = `Renglón ${idx+1} de ${MAX_ITEMS}`;
+    });
+  }
+
+  function readItemsFromUI(){
+    const wrap = document.getElementById("itemsWrap");
+    const rows = [...wrap.querySelectorAll(".lineItem")];
+    const items = rows.map(r => ({
+      materialColor: (r.querySelector(".mat")?.value || "").trim(),
+      meters: (r.querySelector(".mts")?.value || "").trim()
+    })).filter(x => x.materialColor || x.meters);
+
+    return items.map(it => ({
+      materialColor: it.materialColor,
+      meters: it.meters ? String(it.meters).replace(",", ".") : ""
+    }));
+  }
+
+  // -------------------- Form --------------------
+  function clearForm(){
+    document.getElementById("orderDate").value = todayISO();
+    document.getElementById("orderIdPreview").value = "(se genera al guardar)";
+    document.getElementById("fullName").value = "";
+    document.getElementById("phone").value = "";
+    document.getElementById("address").value = "";
+    document.getElementById("paidStatus").value = "si";
+    document.getElementById("paymentDate").value = "";
+    document.getElementById("deliveryDate").value = "";
+    document.getElementById("notes").value = "";
+
+    document.getElementById("itemsWrap").innerHTML = "";
+    addItemRow();
+
+    const btnSave = document.getElementById("btnSave");
+    btnSave.textContent = "Guardar orden";
+    btnSave.dataset.editId = "";
+  }
+
+  function validateForm(){
+    const orderDate = document.getElementById("orderDate").value;
+    const fullName = document.getElementById("fullName").value.trim();
+    const phone = document.getElementById("phone").value.trim();
+    const address = document.getElementById("address").value.trim();
+    const items = readItemsFromUI();
+
+    if(!orderDate) return "Falta: Fecha.";
+    if(!fullName) return "Falta: Nombre Completo.";
+    if(!phone) return "Falta: Número de Teléfono.";
+    if(!address) return "Falta: Dirección.";
+    if(items.length === 0) return "Falta: al menos 1 renglón de Material y cantidad.";
+
+    for(const it of items){
+      if(it.meters){
+        const v = Number(String(it.meters).replace(",", "."));
+        if(isNaN(v) || v <= 0) return "Cantidad en Metros debe ser un número mayor a 0 (por renglón).";
+      } else {
+        return "Cada renglón debe tener cantidad en m².";
+      }
+      if(!it.materialColor) return "Cada renglón debe tener Material y color.";
+    }
+    return null;
+  }
+
+  function upsertOrder(){
+    const err = validateForm();
+    if(err){ alert(err); return; }
+
+    const btnSave = document.getElementById("btnSave");
+    const editId = btnSave.dataset.editId || "";
+
+    const orderDate = document.getElementById("orderDate").value;
+    const payload = {
+      orderDate, // NUEVO: Fecha de orden (capturada)
+      fullName: document.getElementById("fullName").value.trim(),
+      phone: document.getElementById("phone").value.trim(),
+      address: document.getElementById("address").value.trim(),
+      items: readItemsFromUI(),
+      paidStatus: document.getElementById("paidStatus").value,
+      paymentDate: document.getElementById("paymentDate").value,
+      deliveryDate: document.getElementById("deliveryDate").value,
+      notes: document.getElementById("notes").value.trim()
+    };
+
+    if(!editId){
+      const order = {
+        id: uid(orderDate),
+        createdAt: new Date().toISOString(), // registro interno
+        ...payload
+      };
+      state.orders.unshift(order);
+      saveState();
+      clearForm();
+      alert("Orden guardada.");
+      return;
+    }
+
+    const idx = state.orders.findIndex(o => o.id === editId);
+    if(idx < 0){
+      // si no existe (raro), guardar como nueva
+      const order = { id: uid(orderDate), createdAt: new Date().toISOString(), ...payload };
+      state.orders.unshift(order);
+      saveState();
+      clearForm();
+      alert("Orden guardada.");
+      return;
+    }
+
+    state.orders[idx] = {
+      ...state.orders[idx],
+      ...payload
+    };
+
+    saveState();
+    clearForm();
+    alert("Orden actualizada.");
+  }
+
+  // -------------------- PDF --------------------
+  function exportOrderPDF(order){
+    const lib = window.jspdf;
+    if(!lib || !lib.jsPDF){
+      alert("No se cargó la librería PDF. Verifica conexión a internet y recarga.");
+      return;
+    }
+    const { jsPDF } = lib;
+    const doc = new jsPDF({ unit:"mm", format:"letter" });
+
+    const margin = 14;
+    let y = 14;
+
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(14);
+    doc.text("ORDEN DE PEDIDO – ADOQUÍN / PREFABRICADOS", margin, y);
+    y += 8;
+
+    doc.setFont("helvetica","normal");
+    doc.setFontSize(10);
+
+    doc.text(`ID: ${order.id}`, margin, y);
+    doc.text(`Fecha (orden): ${fmtDate(order.orderDate)}`, margin + 90, y);
+    y += 6;
+
+    doc.text(`Registro: ${new Date(order.createdAt).toLocaleString()}`, margin, y);
+    y += 6;
+
+    doc.setDrawColor(200);
+    doc.line(margin, y, 210 - margin, y);
+    y += 7;
+
+    doc.setFont("helvetica","bold"); doc.setFontSize(11);
+    doc.text("Datos del cliente", margin, y);
+    y += 6;
+
+    doc.setFont("helvetica","normal"); doc.setFontSize(10);
+    doc.text(`Nombre: ${order.fullName}`, margin, y); y += 5;
+    doc.text(`Teléfono: ${order.phone}`, margin, y); y += 5;
+
+    const addrLines = doc.splitTextToSize(`Dirección: ${order.address}`, 210 - margin*2);
+    doc.text(addrLines, margin, y);
+    y += (addrLines.length * 5) + 2;
+
+    doc.setFont("helvetica","bold"); doc.setFontSize(11);
+    doc.text("Materiales / Colores", margin, y);
+    y += 6;
+
+    doc.setFont("helvetica","bold"); doc.setFontSize(10);
+    doc.text("Material y color", margin, y);
+    doc.text("m²", 210 - margin - 10, y, { align:"right" });
+    y += 4;
+
+    doc.setFont("helvetica","normal"); doc.setFontSize(10);
+
+    for(const it of order.items){
+      const mat = it.materialColor || "—";
+      const meters = it.meters || "—";
+      const matLines = doc.splitTextToSize(mat, 140);
+
+      const needed = Math.max(matLines.length * 5, 5) + 2;
+      if(y + needed > 270){
+        doc.addPage();
+        y = 14;
+      }
+
+      doc.text(matLines, margin, y);
+      doc.text(String(meters), 210 - margin - 10, y, { align:"right" });
+      y += Math.max(matLines.length * 5, 5) + 2;
+      doc.setDrawColor(230);
+      doc.line(margin, y, 210 - margin, y);
+      y += 5;
+    }
+
+    const total = sumMeters(order.items);
+    doc.setFont("helvetica","bold"); doc.setFontSize(10);
+    doc.text(`Total m²: ${total}`, 210 - margin, y, { align:"right" });
+    y += 8;
+
+    doc.setFont("helvetica","bold"); doc.setFontSize(11);
+    doc.text("Pago y entrega", margin, y);
+    y += 6;
+
+    doc.setFont("helvetica","normal"); doc.setFontSize(10);
+    doc.text(`¿Pagado?: ${paidLabel(order.paidStatus)}`, margin, y); y += 5;
+    doc.text(`Fecha de pago: ${fmtDate(order.paymentDate)}`, margin, y); y += 5;
+    doc.text(`Fecha promesa de entrega: ${fmtDate(order.deliveryDate)}`, margin, y); y += 6;
+
+    if(order.notes){
+      const notesLines = doc.splitTextToSize(`Notas: ${order.notes}`, 210 - margin*2);
+      if(y + (notesLines.length * 5) > 270){
+        doc.addPage();
+        y = 14;
+      }
+      doc.text(notesLines, margin, y);
+      y += notesLines.length * 5;
+    }
+
+    doc.setFontSize(9);
+    doc.setTextColor(110);
+    doc.text("Documento generado desde la app local de pedidos.", margin, 280);
+    doc.setTextColor(0);
+
+    const safeName = String(order.fullName || "cliente")
+      .replace(/[^\w\s-]/g, "").trim().slice(0, 30).replace(/\s+/g, "_");
+    doc.save(`${order.id}_${safeName}.pdf`);
+  }
+
+  // -------------------- Excel Export --------------------
+  function exportExcel(){
+    if(!window.XLSX){
+      alert("No se cargó la librería Excel. Verifica conexión a internet y recarga.");
+      return;
+    }
+
+    // Convertimos a filas planas (ideal para tabla Excel)
+    // Repetimos una fila por cada renglón de material (1..5)
+    const rows = [];
+    for(const o of state.orders){
+      const base = {
+        "ID": o.id,
+        "Fecha (orden)": fmtDate(o.orderDate),
+        "Nombre Completo": o.fullName,
+        "Teléfono": o.phone,
+        "Dirección": o.address,
+        "Pagado": paidLabel(o.paidStatus),
+        "Fecha de pago": fmtDate(o.paymentDate),
+        "Fecha promesa de entrega": fmtDate(o.deliveryDate),
+        "Total m²": sumMeters(o.items),
+        "Notas": o.notes || ""
+      };
+
+      if((o.items || []).length === 0){
+        rows.push({ ...base, "Material y color": "", "m²": "" });
+      } else {
+        for(const it of o.items){
+          rows.push({
+            ...base,
+            "Material y color": it.materialColor || "",
+            "m²": it.meters || ""
+          });
+        }
+      }
+    }
+
+    // Hoja
+    const ws = XLSX.utils.json_to_sheet(rows, { skipHeader:false });
+
+    // Ajuste simple de ancho de columnas
+    ws["!cols"] = [
+      { wch: 20 }, // ID
+      { wch: 16 }, // Fecha
+      { wch: 24 }, // Nombre
+      { wch: 16 }, // Tel
+      { wch: 40 }, // Dirección
+      { wch: 10 }, // Pagado
+      { wch: 16 }, // Fecha pago
+      { wch: 22 }, // Fecha entrega
+      { wch: 10 }, // Total
+      { wch: 30 }, // Notas
+      { wch: 36 }, // Material
+      { wch: 10 }  // m2
+    ];
+
+    // Tabla (estilo Excel): SheetJS no crea “Table object” nativo sin opciones avanzadas,
+    // pero esta exportación queda como tabla/hoja estructurada perfectamente para filtrar.
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Pedidos");
+
+    XLSX.writeFile(wb, `pedidos_adoquin_${todayISO()}.xlsx`);
+  }
+
+  // -------------------- Orders list --------------------
+  function renderCount(){
+    const n = state.orders.length;
+    document.getElementById("countPill").textContent = `${n} pedido${n===1?"":"s"}`;
+  }
+
+  function renderOrders(){
+    const q = (document.getElementById("search").value || "").trim().toLowerCase();
+    const wrap = document.getElementById("ordersWrap");
+    wrap.innerHTML = "";
+
+    const orders = state.orders.filter(o => {
+      if(!q) return true;
+      return (
+        (o.fullName || "").toLowerCase().includes(q) ||
+        (o.phone || "").toLowerCase().includes(q) ||
+        (o.id || "").toLowerCase().includes(q)
+      );
+    });
+
+    if(orders.length === 0){
+      const d = document.createElement("div");
+      d.className = "small";
+      d.textContent = q ? "Sin resultados." : "Aún no hay pedidos guardados.";
+      wrap.appendChild(d);
+      return;
+    }
+
+    for(const o of orders){
+      const total = sumMeters(o.items);
+      const created = new Date(o.createdAt).toLocaleString();
+
+      const card = document.createElement("div");
+      card.className = "orderCard";
+      card.innerHTML = `
+        <div class="orderTitle">
+          <div>
+            <div style="font-weight:700;">
+              ${escapeHtml(o.fullName)} <span class="mut">(${escapeHtml(o.phone)})</span>
+            </div>
+            <div class="small mono">${escapeHtml(o.id)} • Fecha: ${fmtDate(o.orderDate)} • Registro: ${escapeHtml(created)}</div>
+            <div class="small">
+              Pagado: <b>${paidLabel(o.paidStatus)}</b> • Pago: <b>${fmtDate(o.paymentDate)}</b> • Entrega: <b>${fmtDate(o.deliveryDate)}</b> • Total m²: <b>${total}</b>
+            </div>
+          </div>
+          <div class="row">
+            <button class="btn" data-pdf="1" type="button">PDF</button>
+            <button class="btn" data-edit="1" type="button">Editar</button>
+            <button class="btn danger" data-del="1" type="button">Eliminar</button>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="small"><b>Dirección:</b> ${escapeHtml(o.address)}</div>
+
+        <div style="margin-top:8px;">
+          <table class="table">
+            <thead><tr><th>Material y color</th><th style="width:90px;">m²</th></tr></thead>
+            <tbody>
+              ${(o.items || []).map(it => `
+                <tr>
+                  <td>${escapeHtml(it.materialColor || "—")}</td>
+                  <td>${escapeHtml(it.meters || "—")}</td>
+                </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+
+        ${o.notes ? `<div class="small" style="margin-top:8px;"><b>Notas:</b> ${escapeHtml(o.notes)}</div>` : ""}
+      `;
+
+      card.querySelector('[data-pdf="1"]').addEventListener("click", () => exportOrderPDF(o));
+      card.querySelector('[data-del="1"]').addEventListener("click", () => {
+        const ok = confirm(`¿Eliminar la orden ${o.id}?`);
+        if(!ok) return;
+        state.orders = state.orders.filter(x => x.id !== o.id);
+        saveState();
+      });
+      card.querySelector('[data-edit="1"]').addEventListener("click", () => loadOrderIntoForm(o));
+
+      wrap.appendChild(card);
+    }
+  }
+
+  function loadOrderIntoForm(order){
+    document.getElementById("orderDate").value = order.orderDate || todayISO();
+    document.getElementById("orderIdPreview").value = order.id || "(sin ID)";
+    document.getElementById("fullName").value = order.fullName || "";
+    document.getElementById("phone").value = order.phone || "";
+    document.getElementById("address").value = order.address || "";
+    document.getElementById("paidStatus").value = order.paidStatus || "si";
+    document.getElementById("paymentDate").value = order.paymentDate || "";
+    document.getElementById("deliveryDate").value = order.deliveryDate || "";
+    document.getElementById("notes").value = order.notes || "";
+
+    document.getElementById("itemsWrap").innerHTML = "";
+    (order.items || []).slice(0, MAX_ITEMS).forEach(it => addItemRow({ materialColor: it.materialColor, meters: it.meters }));
+    ensureAtLeastOneItem();
+
+    const btnSave = document.getElementById("btnSave");
+    btnSave.textContent = "Actualizar orden";
+    btnSave.dataset.editId = order.id;
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // -------------------- JSON import/export --------------------
+  function exportJson(){
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type:"application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pedidos_adoquin_backup_${todayISO()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importJson(){
+    const inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = "application/json";
+    inp.addEventListener("change", async () => {
+      const f = inp.files?.[0];
+      if(!f) return;
+      try{
+        const text = await f.text();
+        const data = JSON.parse(text);
+        if(!data.orders || !Array.isArray(data.orders)) throw new Error("JSON inválido: falta 'orders'.");
+        state = data;
+        saveState();
+        alert("Importación exitosa.");
+      } catch(e){
+        alert("No se pudo importar: " + (e.message || e));
+      }
+    });
+    inp.click();
+  }
+
+  function wipeAll(){
+    const ok = confirm("¿Borrar todos los pedidos? Esto no se puede deshacer.");
+    if(!ok) return;
+    state = { orders: [] };
+    saveState();
+  }
+
+  // -------------------- Wire up --------------------
+  document.getElementById("btnAddItem").addEventListener("click", () => addItemRow());
+  document.getElementById("btnClear").addEventListener("click", clearForm);
+  document.getElementById("btnSave").addEventListener("click", upsertOrder);
+  document.getElementById("search").addEventListener("input", renderOrders);
+
+  document.getElementById("btnExportExcel").addEventListener("click", exportExcel);
+  document.getElementById("btnExportJson").addEventListener("click", exportJson);
+  document.getElementById("btnImportJson").addEventListener("click", importJson);
+  document.getElementById("btnWipe").addEventListener("click", wipeAll);
+
+  // init
+  function init(){
+    document.getElementById("orderDate").value = todayISO();
+    addItemRow();
+    renderOrders();
+    renderCount();
+  }
+  init();
+</script>
+</body>
+</html>
